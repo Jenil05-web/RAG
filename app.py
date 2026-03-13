@@ -19,14 +19,16 @@ if "OPENAI_API_KEY" in st.secrets:
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 else:
     st.info("Waiting for API Key from Streamlit Secrets...")
+
 # --- 2. Sidebar for PDF Uploading ---
 with st.sidebar:
     st.header("Upload Document")
     uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 
 # --- 3. The RAG Logic (Cached to avoid re-processing every click) ---
+# FIX: Added 'file_name' to force Streamlit to bust the cache when a new file is uploaded
 @st.cache_resource
-def process_pdf(file_path):
+def process_pdf(file_path, file_name):
     # Step 1: Loading
     loader = PyPDFLoader(file_path)
     docs = loader.load()
@@ -45,8 +47,14 @@ if uploaded_file:
     with open("temp.pdf", "wb") as f:
         f.write(uploaded_file.getbuffer())
     
-    # Initialize Retriever
-    retriever = process_pdf("temp.pdf")
+    # FIX: Clear chat history and update the tracker when a new file is uploaded
+    if "current_file" not in st.session_state or st.session_state.current_file != uploaded_file.name:
+        st.session_state.messages = [] # Wipe old chat
+        st.session_state.current_file = uploaded_file.name # Update the tracker
+        st.cache_resource.clear() # Clear memory of the old PDF vectors
+
+    # Initialize Retriever (Passing the new file name)
+    retriever = process_pdf("temp.pdf", uploaded_file.name)
 
     # Define the Prompt
     prompt = ChatPromptTemplate.from_messages([
